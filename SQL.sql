@@ -58,7 +58,7 @@ $function$
 
 -- 单个code的MA和boll
 CREATE OR REPLACE FUNCTION public.maboll(c text)
- RETURNS TABLE(code text, date date, tdate date, ma5 real, ma10 real, ma20 real, ma30 real, ma60 real, up20 real, down20 real)
+ RETURNS TABLE(code text, date date, ma5 real, ma10 real, ma20 real, ma30 real, ma60 real, up20 real, down20 real)
  LANGUAGE plpgsql
  STRICT
 AS $function$
@@ -66,9 +66,8 @@ declare
 begin
     -- -------------------------------------------------------------------------------------------
        return query 
-	   with d as (select golang.code,golang.date,golang.close,(rank() over (order by golang.date)) as id from golang where golang.code=c order by golang.date desc),
-	        td as(select (d.id-1) as id,d.date as tdate from d),
-	        d5 as (select d.code,d.date,d.id,case when count(close) over w=5 then avg(close) over w end as ma5 from d
+	   with d as (select golang.code,golang.date,golang.close from golang where golang.code=c order by golang.date desc),
+	        d5 as (select d.code,d.date,case when count(close) over w=5 then avg(close) over w end as ma5 from d
 	                       window w as (order by d.date rows between 4 preceding and current row)),
 	        d10 as (select d.date,case when count(close) over w=10 then avg(close) over w end as ma10 from d
 	                       window w as (order by d.date rows between 9 preceding and current row)),
@@ -82,7 +81,6 @@ begin
 	                       window w as (order by d.date rows between 59 preceding and current row))
 	    select d5.code,
 	          d5.date,
-	          td.tdate,
 	          d5.ma5::real,
 	          d10.ma10::real,
 	          d20.ma20::real,
@@ -93,14 +91,12 @@ begin
 	    from d5 join d10 on d5.date=d10.date
 	            join d20 on d5.date=d20.date
 	            join d30 on d5.date=d30.date
-	            join d60 on d5.date=d60.date
-	            left join td on d5.id=td.id;  
+	            join d60 on d5.date=d60.date;  
 
 	-- -------------------------------------------------------------------------------------------
 return;
 end;
 $function$
-
 
 
 
@@ -119,7 +115,6 @@ begin
    create table if not exists maboll(
 		code text,
 		date date,
-		tdate date,
 		ma5 real,
 		ma10 real,
 		ma20 real,
@@ -135,7 +130,7 @@ begin
          insert into maboll select * from maboll(x);
 	-- -------------------------------------------------------------------------------------------
 	end loop;
-    create index maboll_index on maboll(code,date,tdate);
+    create index maboll_index on maboll(code,date);
 END
 $function$
 
@@ -546,7 +541,7 @@ $function$
 --=================================================================================================================================================
 --=================================================================================================================================================
 -- 单个code预算各指标的交叉价位
-CREATE OR REPLACE FUNCTION public.crossprice(cc text)
+CREATE OR REPLACE FUNCTION public.predict(cc text)
  RETURNS TABLE(date date, code text, c_ma5 real, c_ma10 real, c_ma20 real, c_ma30 real, c_ma60 real, c_down20 real, c_up20 real, ma_5_10 real, ma_5_20 real, ma_5_30 real, ma_5_60 real, ma_10_20 real, ma_10_30 real, ma_10_60 real, ma_20_30 real, ma_20_60 real, ma_30_60 real)
  LANGUAGE plpgsql
  STRICT
@@ -605,14 +600,14 @@ $function$
 --=================================================================================================================================================
 --=================================================================================================================================================
 -- 储存预算各指标的交叉价位
-CREATE OR REPLACE FUNCTION public.crossprice_store()
+CREATE OR REPLACE FUNCTION public.predict_store()
  RETURNS void
  LANGUAGE plpgsql
 AS $function$
 DECLARE --定义
 x text; 
 begin
-   create table if not exists crossprice(
+   create table if not exists predict(
         date date,
 		code text,
 		c_ma5 real,
@@ -633,15 +628,15 @@ begin
 	    ma_20_60 real,
 	    ma_30_60  real    
 		);
-   drop index if exists crossprice_index;
-   truncate crossprice;
+   drop index if exists predict_index;
+   truncate predict;
    for x in select stock_code.code from stock_code loop
    --raise notice 'code=:%',x;
     -- -------------------------------------------------------------------------------------------
-     insert into crossprice select * from crossprice(x);
+     insert into predict select * from predict(x);
 	-- -------------------------------------------------------------------------------------------
 	end loop;
-    create index crossprice_index on crossprice(code,date);
+    create index predict_index on predict(code,date);
 END
 $function$
 
