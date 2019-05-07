@@ -27,12 +27,12 @@ begin
 			   c.buy::real,
 		       g.low::real,
 		       c.c_down20::real,
-		       (f.lhh2-c.c_down20)/c.c_down20*100::real as rlhh2,
-		       (f.lhh5-c.c_down20)/c.c_down20*100::real as rlhh5,
-		       (f.lhh10-c.c_down20)/c.c_down20*100::real as rlhh10,
-		       (f.c2-c.c_down20)/c.c_down20*100::real as rc2,
-		       (f.c5-c.c_down20)/c.c_down20*100::real as rc5,
-		       (f.c10-c.c_down20)/c.c_down20*100::real as rc10
+		       ((f.lhh2-c.buy)/c.buy*100)::real as rlhh2,
+		       ((f.lhh5-c.buy)/c.buy*100)::real as rlhh5,
+		       ((f.lhh10-c.buy)/c.buy*100)::real as rlhh10,
+		       ((f.c2-c.buy)/c.buy*100)::real as rc2,
+		       ((f.c5-c.buy)/c.buy*100)::real as rc5,
+		       ((f.c10-c.buy)/c.buy*100)::real as rc10
 		      from m,g,c,f
 		      where m.tdate=g.date and
 		            c.date=g.date and
@@ -46,6 +46,7 @@ return;
 end;
 $function$
 ;
+
 
 
 -- =========================================================================================================================
