@@ -87,3 +87,57 @@ $function$
 ;
 
 
+-- =========================================================================================================================
+-- =========================================================================================================================
+
+CREATE OR REPLACE FUNCTION public.verify(rh real,rl real)
+--RETURNS VOID
+ RETURNS TABLE(code text, buy_date date,sell_date date,buy real,sell real,profit real)
+ LANGUAGE plpgsql
+ STRICT
+AS $function$
+declare
+	x RECORD;
+    y RECORD;
+begin
+   for x in select * from findall loop
+    -- -------------------------------------------------------------------------------------------
+       for y in select * from golang where golang.code=x.code and date>x.date order by date limit 10 loop
+            if (y.low<=x.buy*(1-rl/100)) then
+               return query select x.code,
+                                   x.date as buy_date,
+                                   y.date as sell_date,
+                                   x.buy::real,
+                                   (x.buy*(1-rl/100))::real as sell,
+                                   (0-x.buy*rl/100)::real as profit;
+                           EXIT;
+            end if;
+            if (y.high>=x.buy*(1+rh/100)) then
+               return query select x.code,
+                                   x.date as buy_date,
+                                   y.date as sell_date,
+                                   x.buy::real,
+                                   (x.buy*(1+rh/100))::real as sell,
+                                   (x.buy*rh/100)::real as profit;
+                          EXIT;
+            end if;
+       end loop;
+	-- -------------------------------------------------------------------------------------------
+	end loop;
+
+return;
+end;
+$function$
+;
+
+
+
+
+
+
+
+
+
+
+
+
