@@ -1,7 +1,8 @@
 -- 查找函数1，通道宽率小于rch ,购买点小于c_down20*(1-rb/100),rch rb 为0~100的数字
--- cc:code
--- rch:rate of channl
--- rb rate of c_down20 (point of buy)
+-- cc:代码
+-- rch:boll通道的宽度百分比 rch%
+-- rb 买点相对于c_down20的下降百分比 rb%
+-- dnlag down20的涨幅探测天数
 
 CREATE OR REPLACE FUNCTION public.find(cc text, rch integer, rb real, dnlag integer)
  RETURNS TABLE(code text, date date, rchannl real, rdown20 real, buy real, low real, c_down20 real, rlhh2 real, rlhh5 real, rlhh10 real, rc2 real, rc5 real, rc10 real)
@@ -89,50 +90,95 @@ $function$
 
 -- =========================================================================================================================
 -- =========================================================================================================================
-
-CREATE OR REPLACE FUNCTION public.verify(rh real,rl real)
---RETURNS VOID
- RETURNS TABLE(code text, buy_date date,sell_date date,buy real,sell real,profit real)
+CREATE OR REPLACE FUNCTION public.verify(rh real,rl real,rd20 real)
+-- rh 止盈百分比 rh%
+-- rl 止损百分比 rl%
+-- rd20 过去几天rdown20的涨幅百分比 rd20%
+ RETURNS TABLE(code text, buy_date date,sell_date date,buy real,sell real,profit real,info text)
  LANGUAGE plpgsql
  STRICT
 AS $function$
 declare
 	x RECORD;
     y RECORD;
+    issell bool;
 begin
-   for x in select * from findall loop
-    -- -------------------------------------------------------------------------------------------
+   for x in select * from findall where rdown20>rd20 loop
+    -- ---------------------------------------------------------------------------------------------------------------------------
+       issell=false;
        for y in select * from golang where golang.code=x.code and date>x.date order by date limit 10 loop
-            if (y.low<=x.buy*(1-rl/100)) then
+	    -- ----------------------------------------------------------------------------------------------
+            if (y.open<=x.buy*(1-rl/100)) then
+	            -- 第二天开盘价小于止损价则以开盘价止损
+	           issell=true; 
+               return query select x.code,
+                                   x.date as buy_date,
+                                   y.date as sell_date,
+                                   x.buy::real,
+                                   y.open::real as sell,
+                                   ((y.open-x.buy)*100/x.buy)::real as profit,
+                                   ('open止损')::text as info;
+                           EXIT;
+            end if;	 
+	    -- ----------------------------------------------------------------------------------------------	       
+            if (y.open>x.buy*(1-rl/100)) and (y.low<=x.buy*(1-rl/100)) then
+	           -- 第二天开盘价没有小于止损价但最低价小于止损价则以止损价止损
+	           issell=true; 
                return query select x.code,
                                    x.date as buy_date,
                                    y.date as sell_date,
                                    x.buy::real,
                                    (x.buy*(1-rl/100))::real as sell,
-                                   (0-x.buy*rl/100)::real as profit;
+                                   (-rl)::real as profit,
+                                   ('止损')::text as info;
                            EXIT;
             end if;
-            if (y.high>=x.buy*(1+rh/100)) then
+           -- ----------------------------------------------------------------------------------------------
+             if (y.open>=x.buy*(1+rh/100)) then
+	            -- 第二天开盘价大于止盈价 则以止盈价止盈
+	           issell=true; 
+               return query select x.code,
+                                   x.date as buy_date,
+                                   y.date as sell_date,
+                                   x.buy::real,
+                                   y.open::real as sell,
+                                   ((y.open-x.buy)*100/x.buy)::real as profit,
+                                   ('open盈利')::text as info;
+                          EXIT;
+            end if;          
+           -- ----------------------------------------------------------------------------------------------
+            if (y.open<x.buy*(1+rh/100)) and (y.high>=x.buy*(1+rh/100)) then
+	           -- 第二天开盘价小于止盈价但最高价大于止盈价 则以止盈价止盈
+	           issell=true; 
                return query select x.code,
                                    x.date as buy_date,
                                    y.date as sell_date,
                                    x.buy::real,
                                    (x.buy*(1+rh/100))::real as sell,
-                                   (x.buy*rh/100)::real as profit;
+                                   rh::real as profit,
+                                   ('盈利')::text as info;
                           EXIT;
             end if;
+           
+           
        end loop;
 	-- -------------------------------------------------------------------------------------------
+       if issell is false then
+ 	           issell=true; 
+               return query select x.code,
+                                   x.date as buy_date,
+                                   y.date as sell_date,
+                                   x.buy::real,
+                                   y.close::real as sell,
+                                   ((y.close-x.buy)*100/x.buy)::real as profit,
+                                   ('到期'||((y.close-x.buy)*100/x.buy))::text as info;
+       end if;
 	end loop;
 
 return;
 end;
 $function$
 ;
-
-
-
-
 
 
 
