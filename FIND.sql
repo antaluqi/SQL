@@ -5,7 +5,7 @@
 -- dnlag down20的涨幅探测天数
 
 CREATE OR REPLACE FUNCTION public.find(cc text, rch integer, rb real, dnlag integer)
- RETURNS TABLE(code text, date date, rchannl real, rdown20 real, buy real, low real, c_down20 real, rlhh2 real, rlhh5 real, rlhh10 real, rc2 real, rc5 real, rc10 real)
+ RETURNS TABLE(code text, date date, rchannl real, rdown20 real, buy real, low real, c_down20 real)
  LANGUAGE plpgsql
  STRICT
 AS $function$
@@ -27,17 +27,10 @@ begin
 		       (m.down20-m.down20_lag)/m.down20_lag*100 ::real as rdown20,
 			   c.buy::real,
 		       g.low::real,
-		       c.c_down20::real,
-		       ((f.lhh2-c.buy)/c.buy*100)::real as rlhh2,
-		       ((f.lhh5-c.buy)/c.buy*100)::real as rlhh5,
-		       ((f.lhh10-c.buy)/c.buy*100)::real as rlhh10,
-		       ((f.c2-c.buy)/c.buy*100)::real as rc2,
-		       ((f.c5-c.buy)/c.buy*100)::real as rc5,
-		       ((f.c10-c.buy)/c.buy*100)::real as rc10
-		      from m,g,c,f
+		       c.c_down20::real
+		      from m,g,c
 		      where m.tdate=g.date and
 		            c.date=g.date and
-		            f.date=g.date and
 		            m.rchannl<=rch and
 		            g.low<c.buy
 		      order by date desc;
@@ -50,11 +43,12 @@ $function$
 
 
 
+
 -- =========================================================================================================================
 -- =========================================================================================================================
 --储存所有代码的find数据
 
-CREATE OR REPLACE FUNCTION public.find_store(rch integer, rb real,dnlag int)
+CREATE OR REPLACE FUNCTION public.find_store(rch integer, rb real, dnlag integer)
  RETURNS void
  LANGUAGE plpgsql
 AS $function$
@@ -69,13 +63,7 @@ begin
 		rdown20 real,
 		buy real,
 		low real,
-		c_down20 real,
-		rlhh2 real,
-		rlhh5 real,
-		rlhh10 real,
-		rc2 real,
-		rc5 real,
-		rc10 real
+		c_down20 real
 	    );
    for x in select stock_code.code from stock_code loop
     -- -------------------------------------------------------------------------------------------
