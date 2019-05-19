@@ -1,11 +1,9 @@
--- 查找函数1，通道宽率小于rch ,购买点小于c_down20*(1-rb/100),rch rb 为0~100的数字
+-- 查找函数1
 -- cc:代码
--- rch:boll通道的宽度百分比 rch%
--- rb 买点相对于c_down20的下降百分比 rb%
 -- dnlag down20的涨幅探测天数
 
-CREATE OR REPLACE FUNCTION public.find(cc text, rch integer, rb real, dnlag integer)
- RETURNS TABLE(code text, date date, rchannl real, rdown20 real, buy real, low real, c_down20 real)
+CREATE OR REPLACE FUNCTION public.find(cc text, dnlag integer)
+ RETURNS TABLE(code text, date date, rchannl real, rdown20 real, open real, low real, c_down20 real)
  LANGUAGE plpgsql
  STRICT
 AS $function$
@@ -19,20 +17,18 @@ begin
 		                  (maboll.up20-maboll.down20)/maboll.down20*100 as rchannl,
 	                      lag(maboll.down20,dnlag) over(order by maboll.date) as down20_lag
 	               from maboll where maboll.code=cc),  
-		     g as (select golang.date,golang.code,golang.low from golang where golang.code=cc),
-		     c as (select predict.date,predict.code,predict.c_down20,predict.c_down20*(1-rb/100) as buy from predict where predict.code=cc),
-		     f as (select future.date,future.code,lhh2,lhh5,lhh10,c2,c5,c10 from future where future.code=cc)
+		     g as (select golang.date,golang.code,golang.open,golang.low from golang where golang.code=cc),
+		     c as (select predict.date,predict.code,predict.c_down20 from predict where predict.code=cc)
 		select g.code,g.date,
 		       m.rchannl:: real,
 		       (m.down20-m.down20_lag)/m.down20_lag*100 ::real as rdown20,
-			   c.buy::real,
+		       g.open::real,
 		       g.low::real,
 		       c.c_down20::real
 		      from m,g,c
 		      where m.tdate=g.date and
 		            c.date=g.date and
-		            m.rchannl<=rch and
-		            g.low<c.buy
+		            g.low<c.c_down20
 		      order by date desc;
 
 	-- -------------------------------------------------------------------------------------------
@@ -48,7 +44,7 @@ $function$
 -- =========================================================================================================================
 --储存所有代码的find数据
 
-CREATE OR REPLACE FUNCTION public.find_store(rch integer, rb real, dnlag integer)
+CREATE OR REPLACE FUNCTION public.find_store(dnlag integer)
  RETURNS void
  LANGUAGE plpgsql
 AS $function$
@@ -61,13 +57,13 @@ begin
 		date date,
 		rchannl real,
 		rdown20 real,
-		buy real,
+		open real,
 		low real,
 		c_down20 real
 	    );
    for x in select stock_code.code from stock_code loop
     -- -------------------------------------------------------------------------------------------
-         insert into findall select * from find(x,rch,rb,dnlag);
+         insert into findall select * from find(x,dnlag);
 	-- -------------------------------------------------------------------------------------------
 	end loop;
     create index findall_index on findall(code,date);
@@ -75,75 +71,81 @@ END
 $function$
 ;
 
+-- =========================================================================================================================
+-- =========================================================================================================================
+--验证函数
+-- zy 止盈百分比
+-- zs 止损百分比
+-- rch boll通道宽度百分比
+-- rbuy 购买点相对于c_down20下降百分比
+-- rd20 boll下轨的平缓度
 
--- =========================================================================================================================
--- =========================================================================================================================
-CREATE OR REPLACE FUNCTION public.verify(rh real,rl real,rd20 real)
--- rh 止盈百分比 rh%
--- rl 止损百分比 rl%
--- rd20 过去几天rdown20的涨幅百分比 rd20%
- RETURNS TABLE(code text, buy_date date,sell_date date,buy real,sell real,profit real,info text)
+CREATE OR REPLACE FUNCTION public.verify(zy real, zs real, rch real, rbuy real, rd20 real)
+ RETURNS TABLE(code text, buy_date date, sell_date date, buy real, sell real, profit real, info text)
  LANGUAGE plpgsql
  STRICT
 AS $function$
 declare
 	x RECORD;
     y RECORD;
+    buy real;
     issell bool;
 begin
-   for x in select * from findall where rdown20>rd20 loop
+   for x in select * from findall where rchannl<=rch and rdown20>rd20 and (low-c_down20)*100/c_down20<=rbuy and open>c_down20 loop
     -- ---------------------------------------------------------------------------------------------------------------------------
        issell=false;
+       buy=(x.c_down20*(1+rbuy/100))::real;
+       raise notice '%',buy;
        for y in select * from golang where golang.code=x.code and date>x.date order by date limit 10 loop
 	    -- ----------------------------------------------------------------------------------------------
-            if (y.open<=x.buy*(1-rl/100)) then
+            if (y.open<=buy*(1+zs/100)) then
 	            -- 第二天开盘价小于止损价则以开盘价止损
 	           issell=true; 
                return query select x.code,
                                    x.date as buy_date,
                                    y.date as sell_date,
-                                   x.buy::real,
+                                   buy::real,
                                    y.open::real as sell,
-                                   ((y.open-x.buy)*100/x.buy)::real as profit,
+                                   ((y.open-buy)*100/buy)::real as profit,
                                    ('open止损')::text as info;
                            EXIT;
             end if;	 
 	    -- ----------------------------------------------------------------------------------------------	       
-            if (y.open>x.buy*(1-rl/100)) and (y.low<=x.buy*(1-rl/100)) then
+            if (y.open>buy*(1+zs/100)) and (y.low<=buy*(1+zs/100)) then
 	           -- 第二天开盘价没有小于止损价但最低价小于止损价则以止损价止损
 	           issell=true; 
                return query select x.code,
                                    x.date as buy_date,
                                    y.date as sell_date,
-                                   x.buy::real,
-                                   (x.buy*(1-rl/100))::real as sell,
-                                   (-rl)::real as profit,
+                                   buy::real,
+                                   (buy*(1+zs/100))::real as sell,
+                                   zs::real as profit,
                                    ('止损')::text as info;
                            EXIT;
             end if;
            -- ----------------------------------------------------------------------------------------------
-             if (y.open>=x.buy*(1+rh/100)) then
+             if (y.open>=buy*(1+zy/100)) then
 	            -- 第二天开盘价大于止盈价 则以止盈价止盈
 	           issell=true; 
                return query select x.code,
                                    x.date as buy_date,
                                    y.date as sell_date,
-                                   x.buy::real,
+                                   buy::real,
                                    y.open::real as sell,
-                                   ((y.open-x.buy)*100/x.buy)::real as profit,
+                                   ((y.open-buy)*100/buy)::real as profit,
                                    ('open盈利')::text as info;
                           EXIT;
             end if;          
            -- ----------------------------------------------------------------------------------------------
-            if (y.open<x.buy*(1+rh/100)) and (y.high>=x.buy*(1+rh/100)) then
+            if (y.open<buy*(1+zy/100)) and (y.high>=buy*(1+zy/100)) then
 	           -- 第二天开盘价小于止盈价但最高价大于止盈价 则以止盈价止盈
 	           issell=true; 
                return query select x.code,
                                    x.date as buy_date,
                                    y.date as sell_date,
-                                   x.buy::real,
-                                   (x.buy*(1+rh/100))::real as sell,
-                                   rh::real as profit,
+                                   buy::real,
+                                   (buy*(1+zy/100))::real as sell,
+                                   zy::real as profit,
                                    ('盈利')::text as info;
                           EXIT;
             end if;
@@ -156,10 +158,10 @@ begin
                return query select x.code,
                                    x.date as buy_date,
                                    y.date as sell_date,
-                                   x.buy::real,
+                                   buy::real,
                                    y.close::real as sell,
-                                   ((y.close-x.buy)*100/x.buy)::real as profit,
-                                   ('到期'||((y.close-x.buy)*100/x.buy))::text as info;
+                                   ((y.close-buy)*100/buy)::real as profit,
+                                   ('到期'||((y.close-buy)*100/buy))::text as info;
        end if;
 	end loop;
 
@@ -167,6 +169,7 @@ return;
 end;
 $function$
 ;
+
 
 
 
