@@ -1061,8 +1061,74 @@ CREATE OR REPLACE FUNCTION public.maboll_recent_store(n integer)
   $function$
   ;
 
+-- =======================================================================================================================
+-- =======================================================================================================================
+-- 寻找顶点
 
 
+CREATE OR REPLACE FUNCTION public.findtop(c text)
+ RETURNS TABLE(code text, date date,high real,low real,lasth real,lastl real,top int)
+ LANGUAGE plpgsql
+ STRICT
+AS $function$
+declare
+  x RECORD;
+  dir int;
+  lasth real;
+  lastl real;
+begin
+    -- -------------------------------------------------------------------------------------------
+  dir=0;
+  lasth=-1;
+  lastl=-1;
+   for x in select golang.date,golang.code,golang.high,golang.low from golang where golang.code=c order by golang.date loop
+       if dir=0 and lasth=-1 and lastl=-1 then
+          
+         return query select x.code,x.date,x.high,x.low,lasth,lastl,0 as top;
+         lasth=x.high;
+         lastl=x.low;
+          continue;
+       end if;
+       if dir=0 and lasth<>-1 and lastl<>-1 then
 
+          return query select x.code,x.date,x.high,x.low,lasth,lastl,0 as top;
+           if x.high>lasth then
+             dir=1;
+          else 
+             dir=-1;
+          end if;
+          lasth=x.high;
+          lastl=x.low;        
+          continue;
+       end if;     
+       if dir=-1 and x.low>lastl then
 
+          return query select x.code,x.date,x.high,x.low,lasth,lastl,-1 as top;
+          lasth=x.high;
+          lastl=x.low;
+          dir=1;        
+          continue;
+       elseif dir=1 and x.high<lastl then
+
+          return query select x.code,x.date,x.high,x.low,lasth,lastl,1 as top;
+          lasth=x.high;
+          lastl=x.low;
+          dir=-1;         
+          continue;
+       else 
+
+          return query select x.code,x.date,x.high,x.low,lasth,lastl,0 as top;
+          lasth=x.high;
+          lastl=x.low;     
+          continue;
+       end if;
+
+      
+   end loop;
+
+	-- -------------------------------------------------------------------------------------------
+return;
+end;
+$function$
+;
 
