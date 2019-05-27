@@ -1065,64 +1065,55 @@ CREATE OR REPLACE FUNCTION public.maboll_recent_store(n integer)
 -- =======================================================================================================================
 -- 寻找顶点
 
-
 CREATE OR REPLACE FUNCTION public.findtop(c text)
- RETURNS TABLE(code text, date date,high real,low real,lasth real,lastl real,top int)
+ RETURNS TABLE(code text, date date,high real,low real,top int)
  LANGUAGE plpgsql
  STRICT
 AS $function$
 declare
-  x RECORD;
+  base RECORD;
+  pos RECORD;
   dir int;
-  lasth real;
-  lastl real;
+  id int;
 begin
     -- -------------------------------------------------------------------------------------------
   dir=0;
-  lasth=-1;
-  lastl=-1;
-   for x in select golang.date,golang.code,golang.high,golang.low from golang where golang.code=c order by golang.date loop
-       if dir=0 and lasth=-1 and lastl=-1 then
-          
-         return query select x.code,x.date,x.high,x.low,lasth,lastl,0 as top;
-         lasth=x.high;
-         lastl=x.low;
+  id=1;
+   for pos in select golang.date,golang.code,golang.high,golang.low from golang where golang.code=c order by golang.date loop
+       if id=1 then
+          base=pos;
+          id=id+1;
           continue;
        end if;
-       if dir=0 and lasth<>-1 and lastl<>-1 then
-
-          return query select x.code,x.date,x.high,x.low,lasth,lastl,0 as top;
-           if x.high>lasth then
-             dir=1;
-          else 
-             dir=-1;
-          end if;
-          lasth=x.high;
-          lastl=x.low;        
-          continue;
-       end if;     
-       if dir=-1 and x.low>lastl then
-
-          return query select x.code,x.date,x.high,x.low,lasth,lastl,-1 as top;
-          lasth=x.high;
-          lastl=x.low;
-          dir=1;        
-          continue;
-       elseif dir=1 and x.high<lastl then
-
-          return query select x.code,x.date,x.high,x.low,lasth,lastl,1 as top;
-          lasth=x.high;
-          lastl=x.low;
-          dir=-1;         
-          continue;
-       else 
-
-          return query select x.code,x.date,x.high,x.low,lasth,lastl,0 as top;
-          lasth=x.high;
-          lastl=x.low;     
-          continue;
+       
+       if pos.high<=base.high and pos.low>=base.low then
+         return query select base.code,base.date,base.high,base.low,0;
+         continue;
+       end if;
+      
+      if pos.high>=base.high and pos.low<=base.low then
+         return query select pos.code,pos.date,pos.high,pos.low,0;
+         base=pos;
+         continue;
        end if;
 
+      if dir=0 and pos.high>base.high and pos.low>base.low then
+      end if;
+     
+      if dir=0 and pos.high<base.high and pos.low<base.low then
+      end if;
+     
+      if dir=1 and pos.high>base.high and pos.low>base.low then
+      end if;
+     
+      if dir=1 and pos.high<base.high and pos.low<base.low then
+      end if;
+     
+      if dir=-1 and pos.high>base.high and pos.low>base.low then
+      end if;
+     
+      if dir=-1 and pos.high<base.high and pos.low<base.low then
+      end if;
       
    end loop;
 
