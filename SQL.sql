@@ -1087,32 +1087,54 @@ begin
        end if;
        
        if pos.high<=base.high and pos.low>=base.low then
-         return query select base.code,base.date,base.high,base.low,0;
+         return query select pos.code,pos.date,pos.high,pos.low,0; 
          continue;
        end if;
       
       if pos.high>=base.high and pos.low<=base.low then
-         return query select pos.code,pos.date,pos.high,pos.low,0;
+         return query select base.code,base.date,base.high,base.low,0;
          base=pos;
          continue;
        end if;
 
-      if dir=0 and pos.high>base.high and pos.low>base.low then
+      if dir=0 and pos.high>base.high and pos.low>=base.low then
+         return query select base.code,base.date,base.high,base.low,0;
+         base=pos;
+         dir=1;
+         continue;
       end if;
      
-      if dir=0 and pos.high<base.high and pos.low<base.low then
+      if dir=0 and pos.high<=base.high and pos.low<base.low then
+         return query select base.code,base.date,base.high,base.low,0;
+         base=pos;
+         dir=-1;
+         continue;       
       end if;
      
-      if dir=1 and pos.high>base.high and pos.low>base.low then
+      if dir=1 and pos.high>base.high and pos.low>=base.low then
+         return query select base.code,base.date,base.high,base.low,0;
+         base=pos;
+         continue;     
       end if;
      
-      if dir=1 and pos.high<base.high and pos.low<base.low then
+      if dir=1 and pos.high<=base.high and pos.low<base.low then
+         return query select base.code,base.date,base.high,base.low,1;
+         base=pos;
+         dir=-1;
+         continue;     
       end if;
      
-      if dir=-1 and pos.high>base.high and pos.low>base.low then
+      if dir=-1 and pos.high>base.high and pos.low>=base.low then
+         return query select base.code,base.date,base.high,base.low,-1;
+         base=pos;
+         dir=1;
+         continue;              
       end if;
      
-      if dir=-1 and pos.high<base.high and pos.low<base.low then
+      if dir=-1 and pos.high<=base.high and pos.low<base.low then
+         return query select base.code,base.date,base.high,base.low,0;
+         base=pos;
+         continue;           
       end if;
       
    end loop;
