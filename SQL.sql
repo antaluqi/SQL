@@ -1145,3 +1145,57 @@ end;
 $function$
 ;
 
+
+
+
+
+
+
+-- =============================================================================================================================
+-- 顶点左边最大尺度测量函数的尝试
+
+create or replace function test() 
+ returns table(code text, date date, high real, low real, top integer,c real,rl real,base real) 
+as 
+$$
+declare
+x RECORD;
+hh real[][];
+ll real[][];
+baseH real;
+baseL real;
+c1 real;
+begin
+  for x in select *,row_number() over(order by findtop.date) as id,case when findtop.top=1 then findtop.high when findtop.top=-1 then findtop.low end as c from findtop('sh600118') where findtop.top<>0 order by findtop.date loop
+      if x.id=1 and x.top=1 then 
+         c1=x.c;
+	     baseH=x.c;
+         select golang.low into baseL from golang where golang.code=x.code order by golang.date limit 1;       
+         hh[0][0]=x.c;
+         hh[0][1]=baseL;
+         ll[0][1]=baseH;
+         return query select x.code,x.date,x.high,x.low,x.top,x.c,((x.c-baseL)/baseL)::real,baseL;
+      elseif x.id=1 and x.top=-1 then 
+         c1=x.c;
+  	     select golang.high into baseH from golang where golang.code=x.code order by golang.date limit 1;
+         baseL=x.c;      
+         ll[0][01]=x.c;
+         ll[0][1]=baseH;
+         hh[0][1]=baseL;
+         return query select x.code,x.date,x.high,x.low,x.top,x.c,(x.c-baseH)/baseH::real,baseH;
+      elseif x.id=2 and x.top=1 then
+	     hh[0][0]=x.c; 
+	     return query select x.code,x.date,x.high,x.low,x.top,x.c,(x.c-c1)/c1::real,baseL;
+	     c1=x.c;
+      elseif x.id=2 and x.top=-1 then
+         ll[0][0]=x.c;
+         return query select x.code,x.date,x.high,x.low,x.top,x.c,(x.c-c1)/c1::real,baseH;
+         c1=x.c;
+      else
+          
+      end if;
+  end loop;
+  return;
+end;
+$$
+ language plpgsql strict;
