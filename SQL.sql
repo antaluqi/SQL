@@ -1063,10 +1063,10 @@ CREATE OR REPLACE FUNCTION public.maboll_recent_store(n integer)
 
 -- =======================================================================================================================
 -- =======================================================================================================================
--- 寻找顶点
+-- 寻找顶点(包含顶点左右尺度)
 
 CREATE OR REPLACE FUNCTION public.findtop(c text)
- RETURNS TABLE(code text, date date,high real,low real,top int)
+ RETURNS TABLE(code text, date date,high real,low real,top int,datel date,rleft real,dateR date,rright real)
  LANGUAGE plpgsql
  STRICT
 AS $function$
@@ -1074,12 +1074,20 @@ declare
   base RECORD;
   pos RECORD;
   dir int;
-  id int;
+  id int;  
+  st date;
+  ed date; 
+  dateL date;
+  baseL real;
+  dateR date;
+  baseR real;
 begin
     -- -------------------------------------------------------------------------------------------
   dir=0;
   id=1;
-   for pos in select golang.date,golang.code,golang.high,golang.low from golang where golang.code=c order by golang.date loop
+  select golang.date into st from golang where golang.code=c order by golang.date limit 1;
+  select golang.date into ed from golang where golang.code=c order by golang.date desc limit 1;
+  for pos in select golang.date,golang.code,golang.high,golang.low from golang where golang.code=c order by golang.date loop
        if id=1 then
           base=pos;
           id=id+1;
@@ -1087,52 +1095,76 @@ begin
        end if;
        
        if pos.high<=base.high and pos.low>=base.low then
-         return query select pos.code,pos.date,pos.high,pos.low,0; 
+         return query select pos.code,pos.date,pos.high,pos.low,0,null::date,null::real,null::date,null::real; 
          continue;
        end if;
       
       if pos.high>=base.high and pos.low<=base.low then
-         return query select base.code,base.date,base.high,base.low,0;
+         return query select base.code,base.date,base.high,base.low,0,null::date,null::real,null::date,null::real;
          base=pos;
          continue;
        end if;
 
       if dir=0 and pos.high>base.high and pos.low>=base.low then
-         return query select base.code,base.date,base.high,base.low,0;
+         return query select base.code,base.date,base.high,base.low,0,null::date,null::real,null::date,null::real;
          base=pos;
          dir=1;
          continue;
       end if;
      
       if dir=0 and pos.high<=base.high and pos.low<base.low then
-         return query select base.code,base.date,base.high,base.low,0;
+         return query select base.code,base.date,base.high,base.low,0,null::date,null::real,null::date,null::real;
          base=pos;
          dir=-1;
          continue;       
       end if;
      
       if dir=1 and pos.high>base.high and pos.low>=base.low then
-         return query select base.code,base.date,base.high,base.low,0;
+         return query select base.code,base.date,base.high,base.low,0,null::date,null::real,null::date,null::real;
          base=pos;
          continue;     
       end if;
      
       if dir=1 and pos.high<=base.high and pos.low<base.low then
-         return query select base.code,base.date,base.high,base.low,1;
+        -- ----------------------------------------------------
+         select golang.date into dateL from golang where golang.code=c and golang.high>base.high and golang.date<base.date order by golang.date desc limit 1;
+         select golang.date into dateR from golang where golang.code=c and golang.high>base.high and golang.date>base.date order by golang.date limit 1;
+        if dateL is null then
+            dateL=st;
+        end if;
+        if dateR is null then 
+            dateR=ed;
+        end if;
+        select min(golang.low) into baseL from golang where golang.code=c and golang.date>dateL and golang.date<base.date;
+        select min(golang.low) into baseR from golang where golang.code=c and golang.date<dateR and golang.date>base.date;
+        -- ----------------------------------------------------
+         return query select base.code,base.date,base.high,base.low,1,dateL,((base.high-baseL)*100/baseL)::real,dateR,((base.high-baseR)*100/base.high)::real;
          base=pos;
          dir=-1;
          continue;     
       end if;
      
       if dir=-1 and pos.high>base.high and pos.low>=base.low then
-         return query select base.code,base.date,base.high,base.low,-1;
+         -- ----------------------------------------------------
+        select golang.date into dateL from golang where golang.code=c and golang.low<base.low and golang.date<base.date order by golang.date desc limit 1;
+        select golang.date into dateR from golang where golang.code=c and golang.low<base.low and golang.date>base.date order by golang.date limit 1;
+        if dateL is null then
+            dateL=st;
+         end if;
+        if dateR is null then
+            dateR=ed;
+         end if;
+        select max(golang.high) into baseL from golang where golang.code=c and golang.date>dateL and golang.date<base.date;
+        select max(golang.high) into baseR from golang where golang.code=c and golang.date<dateR and golang.date>base.date;
+         -- ----------------------------------------------------
+         return query select base.code,base.date,base.high,base.low,-1,dateL,((base.low-baseL)*100/baseL)::real,dateR,((base.low-baseR)*100/base.low)::real;
          base=pos;
          dir=1;
          continue;              
       end if;
      
       if dir=-1 and pos.high<=base.high and pos.low<base.low then
-         return query select base.code,base.date,base.high,base.low,0;
+         return query select base.code,base.date,base.high,base.low,0,null::date,null::real,null::date,null::real;
          base=pos;
          continue;           
       end if;
@@ -1144,58 +1176,3 @@ return;
 end;
 $function$
 ;
-
-
-
-
-
-
-
--- =============================================================================================================================
--- 顶点左边最大尺度测量函数的尝试
-
-create or replace function test() 
- returns table(code text, date date, high real, low real, top integer,c real,rl real,base real) 
-as 
-$$
-declare
-x RECORD;
-hh real[][];
-ll real[][];
-baseH real;
-baseL real;
-c1 real;
-begin
-  for x in select *,row_number() over(order by findtop.date) as id,case when findtop.top=1 then findtop.high when findtop.top=-1 then findtop.low end as c from findtop('sh600118') where findtop.top<>0 order by findtop.date loop
-      if x.id=1 and x.top=1 then 
-         c1=x.c;
-	     baseH=x.c;
-         select golang.low into baseL from golang where golang.code=x.code order by golang.date limit 1;       
-         hh[0][0]=x.c;
-         hh[0][1]=baseL;
-         ll[0][1]=baseH;
-         return query select x.code,x.date,x.high,x.low,x.top,x.c,((x.c-baseL)/baseL)::real,baseL;
-      elseif x.id=1 and x.top=-1 then 
-         c1=x.c;
-  	     select golang.high into baseH from golang where golang.code=x.code order by golang.date limit 1;
-         baseL=x.c;      
-         ll[0][01]=x.c;
-         ll[0][1]=baseH;
-         hh[0][1]=baseL;
-         return query select x.code,x.date,x.high,x.low,x.top,x.c,(x.c-baseH)/baseH::real,baseH;
-      elseif x.id=2 and x.top=1 then
-	     hh[0][0]=x.c; 
-	     return query select x.code,x.date,x.high,x.low,x.top,x.c,(x.c-c1)/c1::real,baseL;
-	     c1=x.c;
-      elseif x.id=2 and x.top=-1 then
-         ll[0][0]=x.c;
-         return query select x.code,x.date,x.high,x.low,x.top,x.c,(x.c-c1)/c1::real,baseH;
-         c1=x.c;
-      else
-          
-      end if;
-  end loop;
-  return;
-end;
-$$
- language plpgsql strict;
