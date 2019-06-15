@@ -1094,10 +1094,10 @@ begin
           continue;
        end if;
        
-       if pos.high<=base.high and pos.low>=base.low then
-         return query select pos.code,pos.date,pos.high,pos.low,0,null::date,null::real,null::date,null::real; 
-         continue;
-       end if;
+      -- if pos.high<=base.high and pos.low>=base.low then
+      --   return query select pos.code,pos.date,pos.high,pos.low,0,null::date,null::real,null::date,null::real; 
+      --   continue;
+      -- end if;
       
       if pos.high>=base.high and pos.low<=base.low then
          return query select base.code,base.date,base.high,base.low,0,null::date,null::real,null::date,null::real;
@@ -1125,9 +1125,10 @@ begin
          continue;     
       end if;
      
-      if dir=1 and pos.high<=base.high and pos.low<base.low then
+      --if dir=1 and pos.high<=base.high and pos.low<base.low then
+      if dir=1 and pos.high<=base.high then
         -- ----------------------------------------------------
-         select golang.date into dateL from golang where golang.code=c and golang.high>base.high and golang.date<base.date order by golang.date desc limit 1;
+         select golang.date into dateL from golang where golang.code=c and golang.high>=base.high and golang.date<base.date order by golang.date desc limit 1;
          select golang.date into dateR from golang where golang.code=c and golang.high>base.high and golang.date>base.date order by golang.date limit 1;
         if dateL is null then
             dateL=st;
@@ -1136,7 +1137,10 @@ begin
             dateR=ed;
         end if;
         select min(golang.low) into baseL from golang where golang.code=c and golang.date>dateL and golang.date<base.date;
-        select min(golang.low) into baseR from golang where golang.code=c and golang.date<dateR and golang.date>base.date;
+        if baseL is null then
+           select golang.low into baseL from golang where golang.code=c and golang.date=dateL;
+	    end if;
+        select min(golang.low) into baseR from golang where golang.code=c and golang.date<dateR and golang.date>base.date;   
         -- ----------------------------------------------------
          return query select base.code,base.date,base.high,base.low,1,dateL,((base.high-baseL)*100/baseL)::real,dateR,((base.high-baseR)*100/base.high)::real;
          base=pos;
@@ -1144,9 +1148,10 @@ begin
          continue;     
       end if;
      
-      if dir=-1 and pos.high>base.high and pos.low>=base.low then
+      --if dir=-1 and pos.high>base.high and pos.low>=base.low then
+	  if dir=-1 and  pos.low>=base.low then    
          -- ----------------------------------------------------
-        select golang.date into dateL from golang where golang.code=c and golang.low<base.low and golang.date<base.date order by golang.date desc limit 1;
+        select golang.date into dateL from golang where golang.code=c and golang.low<=base.low and golang.date<base.date order by golang.date desc limit 1;
         select golang.date into dateR from golang where golang.code=c and golang.low<base.low and golang.date>base.date order by golang.date limit 1;
         if dateL is null then
             dateL=st;
@@ -1155,6 +1160,9 @@ begin
             dateR=ed;
          end if;
         select max(golang.high) into baseL from golang where golang.code=c and golang.date>dateL and golang.date<base.date;
+        if baseL is null then
+           select golang.high into baseL from golang where golang.code=c and golang.date=dateL;
+	    end if;
         select max(golang.high) into baseR from golang where golang.code=c and golang.date<dateR and golang.date>base.date;
          -- ----------------------------------------------------
          return query select base.code,base.date,base.high,base.low,-1,dateL,((base.low-baseL)*100/baseL)::real,dateR,((base.low-baseR)*100/base.low)::real;
