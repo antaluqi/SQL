@@ -1065,122 +1065,98 @@ CREATE OR REPLACE FUNCTION public.maboll_recent_store(n integer)
 -- =======================================================================================================================
 -- 寻找顶点(包含顶点左右尺度)
 
-CREATE OR REPLACE FUNCTION public.findtop(c text)
- RETURNS TABLE(code text, date date,high real,low real,top int,datel date,rleft real,dateR date,rright real)
+CREATE OR REPLACE FUNCTION public.findtop0(c text)
+ RETURNS TABLE(code text,date date,high real,low real,top int)
  LANGUAGE plpgsql
  STRICT
 AS $function$
 declare
-  base RECORD;
-  pos RECORD;
-  dir int;
-  id int;  
-  st date;
-  ed date; 
-  dateL date;
-  baseL real;
-  dateR date;
-  baseR real;
-begin
-    -- -------------------------------------------------------------------------------------------
-  dir=0;
-  id=1;
-  select golang.date into st from golang where golang.code=c order by golang.date limit 1;
-  select golang.date into ed from golang where golang.code=c order by golang.date desc limit 1;
-  for pos in select golang.date,golang.code,golang.high,golang.low from golang where golang.code=c order by golang.date loop
-       if id=1 then
-          base=pos;
-          id=id+1;
-          continue;
-       end if;
-       
-      -- if pos.high<=base.high and pos.low>=base.low then
-      --   return query select pos.code,pos.date,pos.high,pos.low,0,null::date,null::real,null::date,null::real; 
-      --   continue;
-      -- end if;
-      
-      if pos.high>=base.high and pos.low<=base.low then
-         return query select base.code,base.date,base.high,base.low,0,null::date,null::real,null::date,null::real;
-         base=pos;
-         continue;
-       end if;
-
-      if dir=0 and pos.high>base.high and pos.low>=base.low then
-         return query select base.code,base.date,base.high,base.low,0,null::date,null::real,null::date,null::real;
-         base=pos;
-         dir=1;
-         continue;
-      end if;
-     
-      if dir=0 and pos.high<=base.high and pos.low<base.low then
-         return query select base.code,base.date,base.high,base.low,0,null::date,null::real,null::date,null::real;
-         base=pos;
-         dir=-1;
-         continue;       
-      end if;
-     
-      if dir=1 and pos.high>base.high and pos.low>=base.low then
-         return query select base.code,base.date,base.high,base.low,0,null::date,null::real,null::date,null::real;
-         base=pos;
-         continue;     
-      end if;
-     
-      --if dir=1 and pos.high<=base.high and pos.low<base.low then
-      if dir=1 and pos.high<=base.high then
-        -- ----------------------------------------------------
-         select golang.date into dateL from golang where golang.code=c and golang.high>=base.high and golang.date<base.date order by golang.date desc limit 1;
-         select golang.date into dateR from golang where golang.code=c and golang.high>base.high and golang.date>base.date order by golang.date limit 1;
-        if dateL is null then
-            dateL=st;
-        end if;
-        if dateR is null then 
-            dateR=ed;
-        end if;
-        select min(golang.low) into baseL from golang where golang.code=c and golang.date>dateL and golang.date<base.date;
-        if baseL is null then
-           select golang.low into baseL from golang where golang.code=c and golang.date=dateL;
-	    end if;
-        select min(golang.low) into baseR from golang where golang.code=c and golang.date<dateR and golang.date>base.date;   
-        -- ----------------------------------------------------
-         return query select base.code,base.date,base.high,base.low,1,dateL,((base.high-baseL)*100/baseL)::real,dateR,((base.high-baseR)*100/base.high)::real;
-         base=pos;
-         dir=-1;
-         continue;     
-      end if;
-     
-      --if dir=-1 and pos.high>base.high and pos.low>=base.low then
-	  if dir=-1 and  pos.low>=base.low then    
-         -- ----------------------------------------------------
-        select golang.date into dateL from golang where golang.code=c and golang.low<=base.low and golang.date<base.date order by golang.date desc limit 1;
-        select golang.date into dateR from golang where golang.code=c and golang.low<base.low and golang.date>base.date order by golang.date limit 1;
-        if dateL is null then
-            dateL=st;
-         end if;
-        if dateR is null then
-            dateR=ed;
-         end if;
-        select max(golang.high) into baseL from golang where golang.code=c and golang.date>dateL and golang.date<base.date;
-        if baseL is null then
-           select golang.high into baseL from golang where golang.code=c and golang.date=dateL;
-	    end if;
-        select max(golang.high) into baseR from golang where golang.code=c and golang.date<dateR and golang.date>base.date;
-         -- ----------------------------------------------------
-         return query select base.code,base.date,base.high,base.low,-1,dateL,((base.low-baseL)*100/baseL)::real,dateR,((base.low-baseR)*100/base.low)::real;
-         base=pos;
-         dir=1;
-         continue;              
-      end if;
-     
-      if dir=-1 and pos.high<=base.high and pos.low<base.low then
-         return query select base.code,base.date,base.high,base.low,0,null::date,null::real,null::date,null::real;
-         base=pos;
-         continue;           
-      end if;
-      
-   end loop;
-
-	-- -------------------------------------------------------------------------------------------
-return;
+	  -- 前后两条记录
+	  base RECORD;
+	  pos RECORD;
+	  -- 游标
+	  cur cursor(date date,high real,low real) for select golang.date,golang.high,golang.low from golang where golang.code=c order by golang.date;
+	  -- 位置
+	  id int;
+	  -- 方向
+	  dir int;
+begin 
+	  id=1;
+	  dir=0;
+	  -- 打开游标
+	  open cur(code,high,low);
+	  loop    --开始循环
+	     fetch cur into pos;  --获取数据
+	     exit when not found; 
+	     -- ------------------------------------------------
+	      if id=1 then --首个id
+	          base=pos;
+	          id=id+1;
+	          continue;
+          end if;
+          -- ---------------- 确定方向前
+          if dir=0 then
+	          return query select c,base.date,base.high,base.low,0;
+	          if pos.high>base.high and pos.low>base.low then  
+		         dir=1;
+		      elseif pos.high<base.high and pos.low<base.low then 
+		         dir=-1;
+	          end if;
+	          base=pos;
+		      continue;
+          end if;
+	      -- -----------------确定方向后
+		  --上升通道	      
+	      if dir=1 then
+	      	  if pos.high>base.high then
+                 return query select c,base.date,base.high,base.low,0;
+		      elseif pos.high<base.high then 
+                 return query select c,base.date,base.high,base.low,1;
+                 dir=-1;
+	          end if;
+	          base=pos;
+		      continue;
+	      end if;
+	      --下降通道
+	      if dir=-1 then
+	      	  if pos.low>base.low then  
+                 return query select c,base.date,base.high,base.low,-1;
+                 dir=1;
+		      elseif pos.low<base.low then 
+                 return query select c,base.date,base.high,base.low,0;
+	          end if;
+	          base=pos;
+		      continue;
+	      end if;	    
+	    -- ------------------------------------------------
+	  end loop; --循环结束
+	  CLOSE cur;
+	  return;
 end;
 $function$
 ;
+
+
+
+-- -----------------------------------------------------------------------------------------
+with d as (select *,case when top=1 then high else low end::real as c from findtop0('sz002415') where top<>0 order by date),
+	 d1 as (select *,case when top=1 then (select date from d where date<d0.date and c>=d0.c order by date desc limit 1)  
+		                  when top=-1 then (select date from d where date<d0.date and c<=d0.c order by date desc limit 1)  end as datel,
+			         case when top=1 then (select date from d where date>d0.date and c>=d0.c order by date limit 1)  
+			              when top=-1 then (select date from d where date>d0.date and c<=d0.c order by date limit 1)  end as dater
+		   from d as d0),
+	d2 as	(select *,case when top=1 then (select min(c) from d where date between coalesce(d1.datel,'2011-01-01') and d1.date)
+			              when top=-1 then (select max(c) from d where date between coalesce(d1.datel,'2011-01-01') and d1.date) end as dl,
+			         case when top=1 then (select min(c) from d where date between d1.date and coalesce(d1.dater,'2099-01-01'))
+			              when top=-1 then (select max(c) from d where date between d1.date and coalesce(d1.dater,'2099-01-01')) end as dr
+			from d1),
+	d3 as	(select *, case when top=1 then (c-dl)/c*100
+			               when top=-1 then (dl-c)/dl*100 end::real as rl,
+			          case when top=1 then (c-dr)/c*100 
+			               when top=-1 then (dr-c)/dr*100 end:: real as rr
+			          from d2)
+	select * from d3 where rl>10 and rr>10    
+
+
+
+
