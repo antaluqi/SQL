@@ -1139,6 +1139,7 @@ $function$
 
 
 -- -----------------------------------------------------------------------------------------
+-- 速度相对快
 with d as (select *,case when top=1 then high else low end::real as c from findtop0('sz002415') where top<>0 order by date),
 	 d1 as (select *,case when top=1 then (select date from d where date<d0.date and c>=d0.c order by date desc limit 1)  
 		                  when top=-1 then (select date from d where date<d0.date and c<=d0.c order by date desc limit 1)  end as datel,
@@ -1158,5 +1159,41 @@ with d as (select *,case when top=1 then high else low end::real as c from findt
 	select * from d3 where rl>10 and rr>10    
 
 
-
+-- -----------------------------------------------------------------------------------------------
+-- 速度很慢
+CREATE OR REPLACE FUNCTION public.findtop(c text)
+ RETURNS TABLE(date date,top int,val real,datel date,dater date,rl real,rr real)
+ LANGUAGE plpgsql
+ STRICT
+AS $function$
+declare
+      datel date;
+      dater date;
+      valr real;
+      vall real;
+      x RECORD;
+	  -- 记录
+	  pos RECORD;
+begin 
+	create temp table tmp as select findtop0.date,findtop0.top,case when findtop0.top=1 then findtop0.high else findtop0.low end::real as val from findtop0(c) where findtop0.top<>0 order by findtop0.date;
+     for x in select * from tmp loop
+         if x.top=1 then
+             select tmp.date into datel from tmp where tmp.date<x.date and tmp.val>=x.val order by tmp.date desc limit 1; 
+             select tmp.date into dater from tmp where tmp.date>x.date and tmp.val>=x.val order by tmp.date limit 1;
+             select min(tmp.val) into vall from tmp where tmp.date between coalesce(datel,'2011-01-01') and x.date;
+             select min(tmp.val) into valr from tmp where tmp.date between x.date and coalesce(dater,'2099-01-01');
+             return query select x.date,x.top,x.val,datel,dater,((x.val-vall)/x.val*100)::real,((x.val-valr)/x.val*100)::real;
+         elseif x.top=-1 then
+             select tmp.date into datel from tmp where tmp.date<x.date and tmp.val<=x.val order by tmp.date desc limit 1; 
+             select tmp.date into dater from tmp where tmp.date>x.date and tmp.val<=x.val order by tmp.date limit 1;   
+             select max(tmp.val) into vall from tmp where tmp.date between coalesce(datel,'2011-01-01') and x.date;
+             select max(tmp.val) into valr from tmp where tmp.date between x.date and coalesce(dater,'2099-01-01');
+             return query select x.date,x.top,x.val,datel,dater,((x.val-vall)/vall*100)::real,((x.val-valr)/valr*100)::real;
+         end if;
+     end loop;
+    drop table tmp;
+    return;    
+end;
+$function$
+;
 
