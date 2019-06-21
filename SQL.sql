@@ -1063,10 +1063,10 @@ CREATE OR REPLACE FUNCTION public.maboll_recent_store(n integer)
 
 -- =======================================================================================================================
 -- =======================================================================================================================
--- 寻找顶点(包含顶点左右尺度)
+-- 寻找顶点
 
 CREATE OR REPLACE FUNCTION public.findtop0(c text)
- RETURNS TABLE(code text,date date,high real,low real,top int)
+ RETURNS TABLE(code text,date date,val real,top int)
  LANGUAGE plpgsql
  STRICT
 AS $function$
@@ -1080,14 +1080,11 @@ declare
 	  id int;
 	  -- 方向
 	  dir int;
+	  val real;
 begin 
 	  id=1;
 	  dir=0;
-	  -- 打开游标
-	  open cur(code,high,low);
-	  loop    --开始循环
-	     fetch cur into pos;  --获取数据
-	     exit when not found; 
+      for pos in select golang.date,golang.high,golang.low from golang where golang.code=c order by golang.date loop
 	     -- ------------------------------------------------
 	      if id=1 then --首个id
 	          base=pos;
@@ -1096,7 +1093,6 @@ begin
           end if;
           -- ---------------- 确定方向前
           if dir=0 then
-	          return query select c,base.date,base.high,base.low,0;
 	          if pos.high>base.high and pos.low>base.low then  
 		         dir=1;
 		      elseif pos.high<base.high and pos.low<base.low then 
@@ -1106,12 +1102,9 @@ begin
 		      continue;
           end if;
 	      -- -----------------确定方向后
-		  --上升通道	      
 	      if dir=1 then
-	      	  if pos.high>base.high then
-                 return query select c,base.date,base.high,base.low,0;
-		      elseif pos.high<base.high then 
-                 return query select c,base.date,base.high,base.low,1;
+		      if pos.high<base.high then 
+                 return query select c,base.date,base.high,1;
                  dir=-1;
 	          end if;
 	          base=pos;
@@ -1120,17 +1113,14 @@ begin
 	      --下降通道
 	      if dir=-1 then
 	      	  if pos.low>base.low then  
-                 return query select c,base.date,base.high,base.low,-1;
+                 return query select c,base.date,base.low,-1;
                  dir=1;
-		      elseif pos.low<base.low then 
-                 return query select c,base.date,base.high,base.low,0;
 	          end if;
 	          base=pos;
 		      continue;
 	      end if;	    
 	    -- ------------------------------------------------
 	  end loop; --循环结束
-	  CLOSE cur;
 	  return;
 end;
 $function$
@@ -1138,62 +1128,36 @@ $function$
 
 
 
--- -----------------------------------------------------------------------------------------
--- 速度相对快
-with d as (select *,case when top=1 then high else low end::real as c from findtop0('sz002415') where top<>0 order by date),
-	 d1 as (select *,case when top=1 then (select date from d where date<d0.date and c>=d0.c order by date desc limit 1)  
-		                  when top=-1 then (select date from d where date<d0.date and c<=d0.c order by date desc limit 1)  end as datel,
-			         case when top=1 then (select date from d where date>d0.date and c>=d0.c order by date limit 1)  
-			              when top=-1 then (select date from d where date>d0.date and c<=d0.c order by date limit 1)  end as dater
-		   from d as d0),
-	d2 as	(select *,case when top=1 then (select min(c) from d where date between coalesce(d1.datel,'2011-01-01') and d1.date)
-			              when top=-1 then (select max(c) from d where date between coalesce(d1.datel,'2011-01-01') and d1.date) end as dl,
-			         case when top=1 then (select min(c) from d where date between d1.date and coalesce(d1.dater,'2099-01-01'))
-			              when top=-1 then (select max(c) from d where date between d1.date and coalesce(d1.dater,'2099-01-01')) end as dr
-			from d1),
-	d3 as	(select *, case when top=1 then (c-dl)/c*100
-			               when top=-1 then (dl-c)/dl*100 end::real as rl,
-			          case when top=1 then (c-dr)/c*100 
-			               when top=-1 then (dr-c)/dr*100 end:: real as rr
-			          from d2)
-	select * from d3 where rl>10 and rr>10    
-
-
--- -----------------------------------------------------------------------------------------------
--- 速度很慢
+-- =======================================================================================================================
+-- =======================================================================================================================
+-- 顶点的左右尺度
 CREATE OR REPLACE FUNCTION public.findtop(c text)
- RETURNS TABLE(date date,top int,val real,datel date,dater date,rl real,rr real)
+ RETURNS TABLE(code text,date date,val real,top int,rl real,rr real)
  LANGUAGE plpgsql
  STRICT
 AS $function$
 declare
-      datel date;
-      dater date;
-      valr real;
-      vall real;
-      x RECORD;
-	  -- 记录
-	  pos RECORD;
 begin 
-	create temp table tmp as select findtop0.date,findtop0.top,case when findtop0.top=1 then findtop0.high else findtop0.low end::real as val from findtop0(c) where findtop0.top<>0 order by findtop0.date;
-     for x in select * from tmp loop
-         if x.top=1 then
-             select tmp.date into datel from tmp where tmp.date<x.date and tmp.val>=x.val order by tmp.date desc limit 1; 
-             select tmp.date into dater from tmp where tmp.date>x.date and tmp.val>=x.val order by tmp.date limit 1;
-             select min(tmp.val) into vall from tmp where tmp.date between coalesce(datel,'2011-01-01') and x.date;
-             select min(tmp.val) into valr from tmp where tmp.date between x.date and coalesce(dater,'2099-01-01');
-             return query select x.date,x.top,x.val,datel,dater,((x.val-vall)/x.val*100)::real,((x.val-valr)/x.val*100)::real;
-         elseif x.top=-1 then
-             select tmp.date into datel from tmp where tmp.date<x.date and tmp.val<=x.val order by tmp.date desc limit 1; 
-             select tmp.date into dater from tmp where tmp.date>x.date and tmp.val<=x.val order by tmp.date limit 1;   
-             select max(tmp.val) into vall from tmp where tmp.date between coalesce(datel,'2011-01-01') and x.date;
-             select max(tmp.val) into valr from tmp where tmp.date between x.date and coalesce(dater,'2099-01-01');
-             return query select x.date,x.top,x.val,datel,dater,((x.val-vall)/vall*100)::real,((x.val-valr)/valr*100)::real;
-         end if;
-     end loop;
-    drop table tmp;
-    return;    
+ return query 
+	with d as  (select * from findtop0(c) order by date),
+		 d1 as (select *,case when d0.top=1 then (select d.date from d where d.date<d0.date and d.val>=d0.val order by d.date desc limit 1)  
+			                  when d0.top=-1 then (select d.date from d where d.date<d0.date and d.val<=d0.val order by d.date desc limit 1)  end as datel,
+				         case when d0.top=1 then (select d.date from d where d.date>d0.date and d.val>=d0.val order by d.date limit 1)  
+				              when d0.top=-1 then (select d.date from d where d.date>d0.date and d.val<=d0.val order by d.date limit 1)  end as dater
+			   from d as d0),
+		d2 as	(select *,case when d1.top=1 then (select min(d.val) from d where d.date between coalesce(d1.datel,'2011-01-01') and d1.date)
+				              when d1.top=-1 then (select max(d.val) from d where d.date between coalesce(d1.datel,'2011-01-01') and d1.date) end as dl,
+				         case when d1.top=1 then (select min(d.val) from d where d.date between d1.date and coalesce(d1.dater,'2099-01-01'))
+				              when d1.top=-1 then (select max(d.val) from d where d.date between d1.date and coalesce(d1.dater,'2099-01-01')) end as dr
+				from d1),
+		d3 as	(select *, case when d2.top=1 then (d2.val-dl)/d2.val*100
+				               when d2.top=-1 then (d2.dl-d2.val)/dl*100 end::real as rl,
+				          case when d2.top=1 then (d2.val-dr)/d2.val*100 
+				               when d2.top=-1 then (d2.dr-d2.val)/dr*100 end:: real as rr
+				          from d2)
+	select d3.code,d3.date,d3.val,d3.top,d3.rl,d3.rr from d3; --where rl>10 and rr>10        
 end;
 $function$
 ;
+
 
