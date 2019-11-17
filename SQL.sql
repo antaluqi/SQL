@@ -1161,3 +1161,20 @@ $function$
 ;
 
 
+-- ==============================================================================================================================
+-- ==============================================================================================================================
+-- 复权初步
+
+with g as (select * from golang where code='sh600926'),
+     f as (select * from fq where code='sh600926'),
+     q as (select g.*,(select f.qfq from f where g.date<f.date order by f.date limit 1) from g)
+select q.date,
+       case when q.qfq is not null then q.open*q.qfq else q.open end as open,
+       case when q.qfq is not null then q.close*q.qfq else q.close end as close,
+       case when q.qfq is not null then q.high*q.qfq else q.high end as high,
+       case when q.qfq is not null then q.low*q.qfq else q.low end as low,
+       q.volume,
+       q.code 
+ from q
+ 
+ 
