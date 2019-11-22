@@ -1163,18 +1163,66 @@ $function$
 
 -- ==============================================================================================================================
 -- ==============================================================================================================================
--- 复权初步
+-- 单个code前复权
 
-with g as (select * from golang where code='sh600926'),
-     f as (select * from fq where code='sh600926'),
-     q as (select g.*,(select f.qfq from f where g.date<f.date order by f.date limit 1) from g)
-select q.date,
-       case when q.qfq is not null then q.open*q.qfq else q.open end as open,
-       case when q.qfq is not null then q.close*q.qfq else q.close end as close,
-       case when q.qfq is not null then q.high*q.qfq else q.high end as high,
-       case when q.qfq is not null then q.low*q.qfq else q.low end as low,
-       q.volume,
-       q.code 
- from q
+CREATE OR REPLACE FUNCTION public.qfq(c text)
+ RETURNS TABLE(date date,open real,close real,high real,low real,volume real,code text)
+ LANGUAGE plpgsql
+ STRICT
+AS $function$
+declare
+begin
+    -- -------------------------------------------------------------------------------------------
+	return query 
+		with g as (select * from golang where golang.code=c),
+		     f as (select * from fq where fq.code=c),
+		     q as (select g.*,(select f.qfq from f where g.date<f.date order by f.date limit 1) from g)
+		select q.date,
+		       case when q.qfq is not null then q.open*q.qfq else q.open end as open,
+		       case when q.qfq is not null then q.close*q.qfq else q.close end as close,
+		       case when q.qfq is not null then q.high*q.qfq else q.high end as high,
+		       case when q.qfq is not null then q.low*q.qfq else q.low end as low,
+		       q.volume,
+		       q.code 
+		 from q;
+
+	-- -------------------------------------------------------------------------------------------
+return;
+end;
+$function$
+
+
+-- ==============================================================================================================================
+-- ==============================================================================================================================
+-- 存储所有code的前复权数据
+CREATE OR REPLACE FUNCTION qfq_store()
+ RETURNS void
+ LANGUAGE plpgsql
+AS $function$
+DECLARE --定义
+x text; 
+begin
+   create table if not exists qfqdk(
+        date date,
+        open real,
+        close real,
+        high real,
+        low real,
+        volume real,
+        code text
+		);
+   drop index if exists qfq_index;
+   truncate qfqdk;
+   for x in select stock_code.code from stock_code loop
+    -- -------------------------------------------------------------------------------------------
+         insert into qfqdk select * from qfq(x);
+	-- -------------------------------------------------------------------------------------------
+	end loop;
+    create index qfq_index on qfqdk(code,date);
+END
+$function$
+
+
+
  
  
