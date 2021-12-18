@@ -1232,7 +1232,7 @@ $function$
  --单个概念板块的每日统计数据
 
 CREATE OR REPLACE FUNCTION public.plate_statistics(p_name text)
- RETURNS TABLE(name text,"time" date,rate real, up bigint ,high_limit bigint , low_limit bigint , totle bigint)
+ RETURNS TABLE(name text, "time" date, rate real, up bigint, high_limit bigint, low_limit bigint, totle bigint)
  LANGUAGE plpgsql
  STRICT
 AS $function$
@@ -1242,13 +1242,13 @@ begin
           return query 
 			with c as (select unnest(string_to_array(concepts_gx.stock,'|')) as code from concepts_gx where concepts_gx.name = p_name),
 			     p as (select * from stock_price_1d where code in (select code from c)),
-			     r as (select p.time,(p.close/pre_close-1)*100 as rate from p)
+			     r as (select p.time,(p.close/pre_close-1)*100 as rate,p.close as close,p.high_limit as high_limit,p.low_limit as low_limit  from p)
 			select unnest(array[p_name]) as name,
 			       r.time as "time",
 			       avg(r.rate)::real as rate,
 			       sum(case when r.rate>0 then 1 else 0 end) as up,
-			       sum(case when r.rate>=9.97 then 1 else 0 end) as high_limit,
-			       sum(case when r.rate<=-9.97 then 1 else 0 end) as low_limit,
+			       sum(case when r.close=r.high_limit then 1 else 0 end) as high_limit,
+                   sum(case when r.close=r.low_limit then 1 else 0 end) as low_limit,
 			       count(r.rate) as totle 
 			from r group by r.time  order by time desc; 
 	-- -------------------------------------------------------------------------------------------
@@ -1256,6 +1256,8 @@ begin
 return;
 end;
 $function$
+;
+
  
  
   -- ==============================================================================================================================
