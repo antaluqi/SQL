@@ -1226,3 +1226,65 @@ $function$
 
  
  
+ 
+ -- ==============================================================================================================================
+-- ==============================================================================================================================
+ --单个概念板块的每日统计数据
+
+CREATE OR REPLACE FUNCTION public.plate_statistics(p_name text)
+ RETURNS TABLE(name text,"time" date,rate real, up bigint ,high_limit bigint , low_limit bigint , totle bigint)
+ LANGUAGE plpgsql
+ STRICT
+AS $function$
+declare
+begin
+    -- -------------------------------------------------------------------------------------------
+          return query 
+			with c as (select unnest(string_to_array(concepts_gx.stock,'|')) as code from concepts_gx where concepts_gx.name = p_name),
+			     p as (select * from stock_price_1d where code in (select code from c)),
+			     r as (select p.time,(p.close/pre_close-1)*100 as rate from p)
+			select unnest(array[p_name]) as name,
+			       r.time as "time",
+			       avg(r.rate)::real as rate,
+			       sum(case when r.rate>0 then 1 else 0 end) as up,
+			       sum(case when r.rate>=9.97 then 1 else 0 end) as high_limit,
+			       sum(case when r.rate<=-9.97 then 1 else 0 end) as low_limit,
+			       count(r.rate) as totle 
+			from r group by r.time  order by time desc; 
+	-- -------------------------------------------------------------------------------------------
+
+return;
+end;
+$function$
+ 
+ 
+  -- ==============================================================================================================================
+-- ==============================================================================================================================
+
+ --所有概念板块的每日统计数据
+CREATE OR REPLACE FUNCTION plate_statistics_all()
+ RETURNS void
+ LANGUAGE plpgsql
+AS $function$
+DECLARE --定义
+n text; 
+begin
+   create table if not exists concepts_gx_statistics(
+        name text,
+        time date,
+        rate real,
+        up bigint,
+        high_limit bigint,
+        low_limit bigint,
+        totle bigint
+		);
+   drop index if exists ps_index;
+   truncate concepts_gx_statistics;
+   for n in select concepts.name from concepts loop
+    -- -------------------------------------------------------------------------------------------
+         insert into concepts_gx_statistics select * from plate_statistics(n) ;
+	-- -------------------------------------------------------------------------------------------
+	end loop;
+    create index ps_index on concepts_gx_statistics(name,time);
+END
+$function$
