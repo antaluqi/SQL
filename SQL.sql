@@ -1282,7 +1282,7 @@ begin
 		);
    drop index if exists ps_index;
    truncate concepts_gx_statistics;
-   for n in select concepts.name from concepts loop
+   for n in select concepts_gx.name from concepts_gx loop
     -- -------------------------------------------------------------------------------------------
          insert into concepts_gx_statistics select * from plate_statistics(n) ;
 	-- -------------------------------------------------------------------------------------------
